@@ -1,0 +1,5 @@
+import Link from "next/link";
+
+export default function Settings() {
+  return <main className="shell"><aside className="sidebar"><div className="brand"><span className="logo">⌁</span> CodePilot</div><nav><Link className="nav" href="/">Dashboard</Link><Link className="nav" href="/chat">AI Chat</Link><Link className="nav" href="/connections">Connections</Link><Link className="nav active" href="/settings">Settings</Link></nav></aside><section className="content narrow"><header className="topbar"><div><div className="eyebrow">Workspace</div><h1>Settings</h1></div></header><div className="formCard"><h2>Agent configuration</h2><p className="muted">The UI is ready for the next integration stage.</p><div className="settingRow"><span><b>Planning requires approval</b><small>Never modify code before explicit approval.</small></span><input type="checkbox" defaultChecked /></div><div className="settingRow"><span><b>Run tests before PR</b><small>Run configured test commands in the sandbox.</small></span><input type="checkbox" defaultChecked /></div></div></section></main>;
+}
