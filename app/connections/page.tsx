@@ -39,7 +39,7 @@ export default async function Connections({
             GitHub connected successfully.
           </div>
         )}
-        
+
         {error && (
           <div style={{ padding: '12px', background: '#ffe6e6', color: '#cc0000', marginBottom: '16px', borderRadius: '4px' }}>
             {error}
