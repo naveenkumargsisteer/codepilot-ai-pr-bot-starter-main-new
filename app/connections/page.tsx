@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 export default async function Connections({
   searchParams,
 }: {
-  searchParams: Promise<{ github?: string; error?: string; installation_id?: string }>;
+  searchParams: Promise<{ github?: string; error?: string }>;
 }) {
-  const { github, error, installation_id } = await searchParams;
+  const { github, error } = await searchParams;
+  const cookieStore = await cookies();
+  const installationId = cookieStore.get("github_installation_id")?.value;
 
   return (
     <main className="shell">
@@ -43,24 +46,36 @@ export default async function Connections({
           </div>
         )}
 
-        {installation_id && (
+        {installationId && (
           <div style={{ padding: '12px', background: '#e6f2ff', color: '#004080', marginBottom: '16px', borderRadius: '4px' }}>
-            Installation ID received: {installation_id}
+            Temporary Debug: Cookie installation ID is {installationId}
           </div>
         )}
 
         <div className="cards">
-          <div className="repoCard">
-            <div className="repoIcon">GH</div>
-            <div className="repoMain">
-              <h4>E-commerce API</h4>
-              <p>acme/ecommerce-api</p>
-              <div className="meta">
-                <span>◉ main</span>
-                <span className="status">● Connected</span>
+          {installationId ? (
+            <div className="repoCard">
+              <div className="repoIcon">GH</div>
+              <div className="repoMain">
+                <h4>GitHub Connection Active</h4>
+                <p>Installation ID: {installationId}</p>
+                <div className="meta">
+                  <span className="status">● Connected</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="repoCard" style={{ opacity: 0.6 }}>
+              <div className="repoIcon" style={{ filter: 'grayscale(1)' }}>GH</div>
+              <div className="repoMain">
+                <h4>No Connection</h4>
+                <p>GitHub App is not connected</p>
+                <div className="meta">
+                  <span className="status" style={{ color: '#666' }}>○ Disconnected</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </section>
     </main>

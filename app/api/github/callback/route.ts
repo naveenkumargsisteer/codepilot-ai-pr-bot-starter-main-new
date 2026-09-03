@@ -20,6 +20,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/connections?error=Missing+installation+ID", request.url));
   }
 
-  // Currently not saving the installation ID or repositories.
-  return NextResponse.redirect(new URL(`/connections?github=connected&installation_id=${installationId}`, request.url));
+  const response = NextResponse.redirect(new URL(`/connections?github=connected&installation_id=${installationId}`, request.url));
+  
+  response.cookies.set("github_installation_id", installationId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30, // 30 days
+  });
+
+  return response;
 }
