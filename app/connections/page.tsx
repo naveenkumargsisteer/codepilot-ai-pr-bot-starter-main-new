@@ -19,7 +19,7 @@ export default async function Connections({
         <nav>
           <Link className="nav" href="/">Dashboard</Link>
           <Link className="nav" href="/chat">AI Chat</Link>
-          <Link className="nav active" href="/connections">Connections</Link>
+          <Link className="nav active" href="/connections">MY Connections</Link>
           <Link className="nav" href="/settings">Settings</Link>
         </nav>
       </aside>
