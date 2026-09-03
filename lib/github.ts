@@ -1,3 +1,5 @@
+import { App } from "octokit";
+
 export function getGitHubConfig() {
   const clientId = process.env.GITHUB_CLIENT_ID;
   const clientSecret = process.env.GITHUB_CLIENT_SECRET;
@@ -35,4 +37,15 @@ export function validateGitHubConfig() {
     appSlug: string;
     isConfigured: true;
   };
+}
+
+export async function getInstallationOctokit(installationId: string | number) {
+  const config = validateGitHubConfig();
+  
+  const app = new App({
+    appId: config.appId,
+    privateKey: config.privateKey,
+  });
+
+  return await app.getInstallationOctokit(Number(installationId));
 }
