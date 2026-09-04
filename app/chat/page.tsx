@@ -1,6 +1,19 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
-export default function ChatPage() {
+export default async function ChatPage() {
+  const cookieStore = await cookies();
+  const selectedRepoCookie = cookieStore.get('selected_repo')?.value;
+  let selectedRepo = null;
+  
+  if (selectedRepoCookie) {
+    try {
+      selectedRepo = JSON.parse(selectedRepoCookie);
+    } catch (e) {
+      // ignore parsing error
+    }
+  }
+
   return (
     <main className="shell">
       <aside className="sidebar">
@@ -11,7 +24,7 @@ export default function ChatPage() {
         </nav>
       </aside>
       <section className="content chatPage">
-        <header className="topbar"><div><div className="eyebrow">AI Agent</div><h1>New coding task</h1></div><span className="connectionChip">● E-commerce API · main</span></header>
+        <header className="topbar"><div><div className="eyebrow">AI Agent</div><h1>New coding task</h1></div><span className="connectionChip">● {selectedRepo ? `${selectedRepo.name} · ${selectedRepo.default_branch}` : 'No repository selected'}</span></header>
         <div className="chatLayout">
           <div className="chatBox">
             <div className="message bot"><div className="avatar botAvatar">AI</div><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
