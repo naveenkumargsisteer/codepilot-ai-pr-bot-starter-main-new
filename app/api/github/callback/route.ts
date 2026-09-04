@@ -31,8 +31,5 @@ export async function GET(request: NextRequest) {
     maxAge: 60 * 60 * 24 * 30, // 30 days dscdskmcdsc
   });
 
-  //  response.cookies.set("github_installation_id", installationId, {
-
-
   return response;
 }
