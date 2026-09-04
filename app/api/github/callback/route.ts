@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const response = NextResponse.redirect(new URL(`/connections?github=connected&installation_id=${installationId}`, request.url));
 
-  console.log("Setting GitHub installation ID cookie:", installationId);
+
   response.cookies.set("github_installation_id", installationId, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
