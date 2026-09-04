@@ -1,9 +1,21 @@
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { Suspense } from "react";
+import { selectRepository } from "./actions";
 
 async function RepoFetcher() {
   const headersList = await headers();
+  const cookieStore = await cookies();
+  const selectedRepoCookie = cookieStore.get('selected_repo')?.value;
+  let selectedRepoId = null;
+  if (selectedRepoCookie) {
+    try {
+      selectedRepoId = JSON.parse(selectedRepoCookie).id;
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const host = headersList.get("host") || "localhost:3000";
   const protocol = host.includes("localhost") ? "http" : "https";
   const apiUrl = `${protocol}://${host}/api/github/repositories`;
@@ -34,23 +46,36 @@ async function RepoFetcher() {
 
     return (
       <>
-        {repositories.map((repo: any) => (
-          <div key={repo.id} className="repoCard">
-            <div className="repoIcon" style={{ background: '#24292e', color: 'white' }}>GH</div>
-            <div className="repoMain">
-              <h4>
-                <a href={repo.html_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
-                  {repo.name}
-                </a>
-              </h4>
-              <p>{repo.full_name}</p>
-              <div className="meta">
-                <span className="status">● {repo.private ? 'Private' : 'Public'}</span>
-                <span className="status" style={{ marginLeft: '12px' }}>Branch: {repo.default_branch}</span>
+        {repositories.map((repo: any) => {
+          const isSelected = selectedRepoId && String(selectedRepoId) === String(repo.id);
+          return (
+            <div key={repo.id} className="repoCard" style={isSelected ? { border: '2px solid #0070f3', background: '#f4faff' } : {}}>
+              <div className="repoIcon" style={{ background: '#24292e', color: 'white' }}>GH</div>
+              <div className="repoMain">
+                <h4>
+                  <a href={repo.html_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    {repo.name}
+                  </a>
+                </h4>
+                <p>{repo.full_name}</p>
+                <div className="meta">
+                  <span className="status">● {repo.private ? 'Private' : 'Public'}</span>
+                  <span className="status" style={{ marginLeft: '12px' }}>Branch: {repo.default_branch}</span>
+                </div>
               </div>
+              <form action={selectRepository} style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                <input type="hidden" name="id" value={repo.id} />
+                <input type="hidden" name="name" value={repo.name} />
+                <input type="hidden" name="full_name" value={repo.full_name} />
+                <input type="hidden" name="html_url" value={repo.html_url} />
+                <input type="hidden" name="default_branch" value={repo.default_branch} />
+                <button type="submit" className="button" style={isSelected ? { background: '#0070f3', color: 'white', border: 'none' } : {}}>
+                  {isSelected ? 'Selected' : 'Select'}
+                </button>
+              </form>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </>
     );
   } catch (err: any) {
