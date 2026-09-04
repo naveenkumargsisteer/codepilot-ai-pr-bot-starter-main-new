@@ -1,5 +1,66 @@
 import Link from "next/link";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { Suspense } from "react";
+
+async function RepoFetcher() {
+  const headersList = await headers();
+  const host = headersList.get("host") || "localhost:3000";
+  const protocol = host.includes("localhost") ? "http" : "https";
+  const apiUrl = `${protocol}://${host}/api/github/repositories`;
+  
+  try {
+    const res = await fetch(apiUrl, {
+      headers: {
+        cookie: headersList.get("cookie") || "",
+      },
+      cache: 'no-store'
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      return (
+        <div style={{ padding: '12px', background: '#ffe6e6', color: '#cc0000', marginTop: '16px', borderRadius: '4px', gridColumn: '1 / -1' }}>
+          API Error: {errorData.error || `Failed to fetch repositories (${res.status})`}
+        </div>
+      );
+    }
+
+    const data = await res.json();
+    const repositories = data.repositories || [];
+
+    if (repositories.length === 0) {
+      return <div style={{ padding: '12px', gridColumn: '1 / -1' }}>No repositories found.</div>;
+    }
+
+    return (
+      <>
+        {repositories.map((repo: any) => (
+          <div key={repo.id} className="repoCard">
+            <div className="repoIcon" style={{ background: '#24292e', color: 'white' }}>GH</div>
+            <div className="repoMain">
+              <h4>
+                <a href={repo.html_url} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit' }}>
+                  {repo.name}
+                </a>
+              </h4>
+              <p>{repo.full_name}</p>
+              <div className="meta">
+                <span className="status">● {repo.private ? 'Private' : 'Public'}</span>
+                <span className="status" style={{ marginLeft: '12px' }}>Branch: {repo.default_branch}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </>
+    );
+  } catch (err: any) {
+    return (
+      <div style={{ padding: '12px', background: '#ffe6e6', color: '#cc0000', marginTop: '16px', borderRadius: '4px', gridColumn: '1 / -1' }}>
+        Failed to connect to API: {err.message}
+      </div>
+    );
+  }
+}
 
 export default async function Connections({
   searchParams,
@@ -54,16 +115,21 @@ export default async function Connections({
 
         <div className="cards">
           {installationId ? (
-            <div className="repoCard">
-              <div className="repoIcon">GH</div>
-              <div className="repoMain">
-                <h4>GitHub Connection Active</h4>
-                <p>Installation ID: {installationId}</p>
-                <div className="meta">
-                  <span className="status">● Connected</span>
+            <>
+              <div className="repoCard" style={{ border: '2px solid #0070f3' }}>
+                <div className="repoIcon">GH</div>
+                <div className="repoMain">
+                  <h4>GitHub Connection Active</h4>
+                  <p>Installation ID: {installationId}</p>
+                  <div className="meta">
+                    <span className="status">● Connected</span>
+                  </div>
                 </div>
               </div>
-            </div>
+              <Suspense fallback={<div style={{ padding: '12px', color: '#666', gridColumn: '1 / -1' }}>Loading repositories...</div>}>
+                <RepoFetcher />
+              </Suspense>
+            </>
           ) : (
             <div className="repoCard" style={{ opacity: 0.6 }}>
               <div className="repoIcon" style={{ filter: 'grayscale(1)' }}>GH</div>
