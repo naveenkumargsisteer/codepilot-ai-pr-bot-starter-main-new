@@ -1,0 +1,75 @@
+"use client";
+
+import { useState } from "react";
+
+export function ChatComposer() {
+  const [message, setMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [response, setResponse] = useState<{ message: string; prompt: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!message.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+    setResponse(null);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "An error occurred.");
+      } else {
+        setResponse({ message: data.message, prompt: data.prompt });
+        setMessage("");
+      }
+    } catch (err: any) {
+      setError(err.message || "Network error.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="composer">
+        <textarea
+          placeholder="Describe the code change you want..."
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          disabled={isLoading}
+        ></textarea>
+        <button
+          className="button primary"
+          onClick={handleSubmit}
+          disabled={!message.trim() || isLoading}
+        >
+          {isLoading ? "Analyzing..." : "Analyze repository →"}
+        </button>
+      </div>
+      <small className="hint">The first stage is read-only. Code changes require your plan approval.</small>
+
+      {error && (
+        <div style={{ marginTop: '12px', padding: '12px', background: '#ffe6e6', color: '#cc0000', borderRadius: '4px', fontSize: '14px' }}>
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {response && (
+        <div style={{ marginTop: '12px', padding: '12px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontSize: '14px' }}>
+          <strong>{response.message}</strong><br />
+          <span style={{ opacity: 0.8 }}>Received prompt: {response.prompt}</span>
+        </div>
+      )}
+    </>
+  );
+}
