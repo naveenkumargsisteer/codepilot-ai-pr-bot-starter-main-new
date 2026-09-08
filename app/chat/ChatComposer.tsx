@@ -5,7 +5,7 @@ import { useState } from "react";
 export function ChatComposer() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [response, setResponse] = useState<{ message: string; prompt: string } | null>(null);
+  const [response, setResponse] = useState<{ message: string; prompt: string; ai_response?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
@@ -29,7 +29,7 @@ export function ChatComposer() {
       if (!res.ok) {
         setError(data.error || "An error occurred.");
       } else {
-        setResponse({ message: data.message, prompt: data.prompt });
+        setResponse({ message: data.message, prompt: data.prompt, ai_response: data.ai_response });
         setMessage("");
       }
     } catch (err: any) {
@@ -68,6 +68,12 @@ export function ChatComposer() {
         <div style={{ marginTop: '12px', padding: '12px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontSize: '14px' }}>
           <strong>{response.message}</strong><br />
           <span style={{ opacity: 0.8 }}>Received prompt: {response.prompt}</span>
+          {response.ai_response && (
+            <div style={{ marginTop: '12px', padding: '12px', background: '#ffffff', color: '#333', borderRadius: '4px', border: '1px solid #ccc', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+              <strong>AI Response:</strong><br />
+              {response.ai_response}
+            </div>
+          )}
         </div>
       )}
     </>
