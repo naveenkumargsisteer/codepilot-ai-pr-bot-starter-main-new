@@ -102,7 +102,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const promptContext = `USER REQUEST (INSTRUCTION):
+    const promptContext = `You are CodePilot, an expert AI coding agent. The user is asking you to make a coding change to their repository.
+
+USER REQUEST (INSTRUCTION):
 ${message.trim()}
 
 --- REPOSITORY CONTEXT ---
@@ -116,7 +118,25 @@ ${JSON.stringify(treeData, null, 2)}
 
 FILE CONTENTS:
 ${JSON.stringify(filesContent, null, 2)}
-`;
+
+--- INSTRUCTIONS FOR YOU ---
+1. Do NOT write the actual code yet.
+2. Do NOT claim that files were changed.
+3. Base the plan ONLY on the repository context provided above.
+4. If more repository information is needed to make a complete plan, explicitly state what is missing.
+5. You MUST structure your response EXACTLY like this:
+
+PLAN
+1. [first change]
+2. [second change]
+3. [third change]
+
+FILES TO CHANGE
+* \`path/to/file\`
+* \`path/to/file\`
+
+SUMMARY
+A short explanation of what the changes will accomplish.`;
 
     let aiResponse = "";
     try {
