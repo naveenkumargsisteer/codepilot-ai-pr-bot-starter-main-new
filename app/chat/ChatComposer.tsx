@@ -82,13 +82,15 @@ export function ChatComposer() {
                 {approvalStatus === 'pending' && (
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
-                      onClick={() => setApprovalStatus('approved')}
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setApprovalStatus('approved'); }}
                       style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
                     >
                       Approve Plan
                     </button>
                     <button 
-                      onClick={() => setApprovalStatus('rejected')}
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
                       style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
                     >
                       Reject Plan
