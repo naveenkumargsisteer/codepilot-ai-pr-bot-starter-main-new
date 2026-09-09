@@ -5,9 +5,12 @@ import { useState } from "react";
 export function ChatComposer() {
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [response, setResponse] = useState<{ message: string; prompt: string; ai_response?: string } | null>(null);
+  const [isImplementing, setIsImplementing] = useState(false);
+  const [response, setResponse] = useState<{ message: string; prompt: string; ai_response?: string; context?: any } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
+  const [proposedChanges, setProposedChanges] = useState<any[] | null>(null);
+  const [changesApprovalStatus, setChangesApprovalStatus] = useState<'pending' | 'approved' | null>(null);
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -16,6 +19,8 @@ export function ChatComposer() {
     setError(null);
     setResponse(null);
     setApprovalStatus(null);
+    setProposedChanges(null);
+    setChangesApprovalStatus(null);
 
     try {
       const res = await fetch("/api/chat", {
@@ -31,7 +36,7 @@ export function ChatComposer() {
       if (!res.ok) {
         setError(data.error || "An error occurred.");
       } else {
-        setResponse({ message: data.message, prompt: data.prompt, ai_response: data.ai_response });
+        setResponse({ message: data.message, prompt: data.prompt, ai_response: data.ai_response, context: data.context });
         if (data.ai_response) {
           setApprovalStatus('pending');
         }
@@ -44,6 +49,39 @@ export function ChatComposer() {
     }
   };
 
+  const handleApprovePlan = async () => {
+    setApprovalStatus('approved');
+    setIsImplementing(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/chat/implement", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: response?.prompt,
+          plan: response?.ai_response,
+          context: response?.context
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || "Failed to generate changes.");
+      } else {
+        setProposedChanges(data.changes);
+        setChangesApprovalStatus('pending');
+      }
+    } catch (err: any) {
+      setError(err.message || "Network error.");
+    } finally {
+      setIsImplementing(false);
+    }
+  };
+
   return (
     <>
       <div className="composer">
@@ -51,12 +89,12 @@ export function ChatComposer() {
           placeholder="Describe the code change you want..."
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          disabled={isLoading}
+          disabled={isLoading || isImplementing}
         ></textarea>
         <button
           className="button primary"
           onClick={handleSubmit}
-          disabled={!message.trim() || isLoading}
+          disabled={!message.trim() || isLoading || isImplementing}
         >
           {isLoading ? "Analyzing..." : "Analyze repository →"}
         </button>
@@ -83,23 +121,30 @@ export function ChatComposer() {
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button 
                       type="button"
-                      onClick={(e) => { e.preventDefault(); setApprovalStatus('approved'); }}
+                      onClick={(e) => { e.preventDefault(); handleApprovePlan(); }}
                       style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                      disabled={isImplementing}
                     >
-                      Approve Plan
+                      {isImplementing ? "Generating code..." : "Approve Plan"}
                     </button>
                     <button 
                       type="button"
                       onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
                       style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                      disabled={isImplementing}
                     >
                       Reject Plan
                     </button>
                   </div>
                 )}
-                {approvalStatus === 'approved' && (
+                {approvalStatus === 'approved' && !proposedChanges && !isImplementing && (
                   <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontWeight: 'bold' }}>
                     Plan approved. Ready to implement.
+                  </div>
+                )}
+                {isImplementing && (
+                  <div style={{ padding: '8px', background: '#fff3cd', color: '#856404', borderRadius: '4px', fontWeight: 'bold' }}>
+                    Generating code changes... Please wait.
                   </div>
                 )}
                 {approvalStatus === 'rejected' && (
@@ -110,6 +155,44 @@ export function ChatComposer() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {proposedChanges && (
+        <div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
+          <h3>Proposed changes</h3>
+          <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+            {proposedChanges.map((change, idx) => (
+              <div key={idx} style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{ padding: '8px 12px', background: change.action === 'create' ? '#e6ffe6' : '#e6f7ff', borderBottom: '1px solid #eee', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{change.path}</span>
+                  <span style={{ textTransform: 'uppercase', fontSize: '12px', padding: '2px 6px', background: '#fff', borderRadius: '4px' }}>{change.action}</span>
+                </div>
+                <pre style={{ margin: 0, padding: '12px', background: '#f5f5f5', overflowX: 'auto', fontSize: '13px' }}>
+                  <code>{change.content}</code>
+                </pre>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' }}>
+            {changesApprovalStatus === 'pending' && (
+              <button 
+                type="button"
+                onClick={(e) => { e.preventDefault(); setChangesApprovalStatus('approved'); }}
+                style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Approve Changes
+              </button>
+            )}
+            {changesApprovalStatus === 'approved' && (
+              <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontWeight: 'bold' }}>
+                Changes approved. Ready to write to GitHub.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>
