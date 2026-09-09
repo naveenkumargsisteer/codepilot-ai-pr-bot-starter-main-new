@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
         owner,
         repo,
         tree_sha: default_branch,
+        recursive: "1",
       });
       treeData = treeResponse.tree.map((item: any) => {
         const result: any = {
@@ -73,18 +74,45 @@ export async function POST(req: NextRequest) {
       console.error("Failed to fetch tree:", treeError);
     }
 
-    const filesToRead = [
-      "package.json",
-      "README.md",
-      "tsconfig.json",
-      "next.config.js",
-      "next.config.ts",
-      "next.config.mjs"
-    ];
+    const MAX_FILE_SIZE = 50000; // 50KB size limit
     
+    let dynamicFiles: string[] = [];
+    try {
+      const safePaths = treeData
+        .filter(f => f.type === 'blob' && (f.size === undefined || f.size <= MAX_FILE_SIZE))
+        .filter(f => !f.path.includes('node_modules') && !f.path.endsWith('.lock') && !f.path.endsWith('-lock.json'))
+        .filter(f => !f.path.match(/\.(png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|mp4|webm|pdf|zip|tar|gz|bin|exe|dll)$/i))
+        .map(f => f.path);
+        
+      const validPaths = new Set(safePaths);
+
+      if (safePaths.length > 0) {
+        const selectionPrompt = `User request: "${message}"
+        
+Based on the following list of available files, identify up to 5 file paths that are most relevant to understanding or implementing this request. If it is a UI request, prioritize entry points like index.html or main layout files.
+Return ONLY a comma-separated list of the exact file paths. No markdown, no explanations.
+
+Files:
+${safePaths.join('\n')}`;
+
+        const selectionResponse = await generateGeminiResponse(selectionPrompt);
+        
+        // Defensively parse the response: split by commas, whitespace, quotes, backticks, or markdown list chars
+        const rawTokens = selectionResponse.split(/[\s,"'\`\n\[\]*]+/);
+        
+        // Only accept tokens that exactly match a known safe path from the repository
+        const validatedCandidates = Array.from(new Set(rawTokens.filter(token => validPaths.has(token) && !token.includes('../'))));
+        
+        // Limit the validated result to 5 files
+        dynamicFiles = validatedCandidates.slice(0, 5);
+      }
+    } catch (err) {
+      console.error("Failed to dynamically select files:", err);
+    }
+
     const filesContent: Record<string, string> = {};
     
-    for (const filePath of filesToRead) {
+    for (const filePath of dynamicFiles) {
       try {
         const { data: fileData } = await octokit.rest.repos.getContent({
           owner,
@@ -93,7 +121,11 @@ export async function POST(req: NextRequest) {
         });
         
         if (!Array.isArray(fileData) && fileData.type === "file" && 'content' in fileData) {
-          filesContent[filePath] = Buffer.from(fileData.content, "base64").toString("utf-8");
+          if (fileData.size && fileData.size > MAX_FILE_SIZE) {
+            console.warn(`Skipping ${filePath} because it exceeds the size limit of ${MAX_FILE_SIZE} bytes.`);
+          } else {
+            filesContent[filePath] = Buffer.from(fileData.content, "base64").toString("utf-8");
+          }
         }
       } catch (fileError: any) {
         if (fileError.status !== 404) {
