@@ -1,223 +1,225 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getInstallationOctokit } from "../../../../lib/github";
+import crypto from "crypto";
+
+type Change = {
+  type?: string;
+  action?: string;
+  path: string;
+  content: string;
+};
+
+const MAX_FILES = 10;
+const MAX_FILE_SIZE = 100 * 1024; // 100KB
+
+const FORBIDDEN_DIRS = ["node_modules", ".git", ".next", "dist", "build"];
+const FORBIDDEN_FILES = ["package-lock.json", "yarn.lock", "pnpm-lock.yaml"];
+const FORBIDDEN_EXTS = [
+  ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp",
+  ".mp3", ".mp4", ".wav", ".avi", ".mov", ".zip", ".tar",
+  ".gz", ".pdf", ".exe", ".dll", ".so", ".dylib"
+];
+
+function isValidPath(filePath: string): boolean {
+  if (filePath.includes("../") || filePath.includes("..\\")) return false;
+  if (filePath.startsWith("/") || filePath.startsWith("\\")) return false;
+  
+  const parts = filePath.split(/[/\\]/);
+  if (parts.some((part) => FORBIDDEN_DIRS.includes(part))) return false;
+
+  const fileName = parts[parts.length - 1];
+  if (FORBIDDEN_FILES.includes(fileName)) return false;
+
+  const lowerPath = filePath.toLowerCase();
+  if (FORBIDDEN_EXTS.some((ext) => lowerPath.endsWith(ext))) return false;
+
+  return true;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    let body;
-    try {
-      body = await req.json();
-    } catch (e) {
-      return NextResponse.json({ error: "Invalid JSON format." }, { status: 400 });
-    }
-
-    const { changes, request } = body;
-
-    if (!changes || !Array.isArray(changes)) {
-      return NextResponse.json({ error: "Changes array is required." }, { status: 400 });
-    }
-
     const cookieStore = await cookies();
+    const installationId = cookieStore.get("github_installation_id")?.value;
     const selectedRepoCookie = cookieStore.get("selected_repo")?.value;
 
-    if (!selectedRepoCookie) {
-      return NextResponse.json({ error: "No repository selected." }, { status: 400 });
-    }
-    
-    const installationId = cookieStore.get("github_installation_id")?.value;
-
-    if (!installationId) {
-      return NextResponse.json({ error: "GitHub installation not found." }, { status: 401 });
+    if (!installationId || !selectedRepoCookie) {
+      return NextResponse.json(
+        { error: "Missing GitHub installation ID or selected repository in cookies" },
+        { status: 401 }
+      );
     }
 
-    let repository;
+    let selectedRepo;
     try {
-      repository = JSON.parse(selectedRepoCookie);
-    } catch (e) {
-      return NextResponse.json({ error: "Invalid repository data format." }, { status: 400 });
-    }
-    
-    if (!repository.full_name || typeof repository.full_name !== "string") {
-      return NextResponse.json({ error: "Invalid repository format." }, { status: 400 });
+      selectedRepo = JSON.parse(selectedRepoCookie);
+    } catch {
+      // In case it's a plain string like "owner/repo" instead of JSON
+      selectedRepo = { full_name: selectedRepoCookie };
     }
 
-    const [owner, repo] = repository.full_name.split("/");
+    if (!selectedRepo.full_name) {
+      return NextResponse.json(
+        { error: "Invalid selected_repo format" },
+        { status: 400 }
+      );
+    }
 
+    const [owner, repo] = selectedRepo.full_name.split("/");
     if (!owner || !repo) {
-      return NextResponse.json({ error: "Could not parse owner and repo." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid repository format" },
+        { status: 400 }
+      );
     }
 
-    const default_branch = repository.default_branch || "main";
+    const body = await req.json().catch(() => ({}));
+    const { changes, request: userRequest } = body;
+
+    if (!Array.isArray(changes)) {
+      return NextResponse.json({ error: "Invalid changes format, expected an array" }, { status: 400 });
+    }
+
+    if (changes.length === 0) {
+      return NextResponse.json({ error: "No changes provided" }, { status: 400 });
+    }
+
+    if (changes.length > MAX_FILES) {
+      return NextResponse.json({ error: `Maximum ${MAX_FILES} files allowed` }, { status: 400 });
+    }
+
+    // Basic size and path format validation
+    for (const change of changes as Change[]) {
+      const type = change.type || change.action; // Some APIs might use 'action' instead of 'type'
+      if (!["create", "modify"].includes(type as string)) {
+        return NextResponse.json({ error: `Invalid change type for file ${change.path}` }, { status: 400 });
+      }
+      if (typeof change.path !== "string" || !isValidPath(change.path)) {
+        return NextResponse.json({ error: `Invalid or forbidden path: ${change.path}` }, { status: 400 });
+      }
+      if (typeof change.content !== "string") {
+        return NextResponse.json({ error: `Invalid content for file ${change.path}` }, { status: 400 });
+      }
+      const size = Buffer.byteLength(change.content, "utf8");
+      if (size > MAX_FILE_SIZE) {
+        return NextResponse.json({ error: `File ${change.path} exceeds max size of 100KB` }, { status: 400 });
+      }
+    }
 
     const octokit = await getInstallationOctokit(installationId);
-    
-    let treeData: any[] = [];
-    try {
-      const { data: treeResponse } = await octokit.rest.git.getTree({
-        owner,
-        repo,
-        tree_sha: default_branch,
-        recursive: "1",
-      });
-      treeData = treeResponse.tree.map((item: any) => {
-        const result: any = {
-          path: item.path,
-          type: item.type
-        };
-        if (item.size !== undefined) {
-          result.size = item.size;
-        }
-        return result;
-      });
-    } catch (treeError) {
-      console.error("Failed to fetch tree:", treeError);
-      return NextResponse.json({ error: "Failed to fetch repository tree." }, { status: 500 });
-    }
 
-    const safePaths = treeData
-      .filter(f => f.type === 'blob')
-      .map(f => f.path);
-    const validPaths = new Set(safePaths);
+    // 1. Get repository info to find default branch
+    const { data: repoData } = await octokit.rest.repos.get({
+      owner,
+      repo,
+    });
+    const defaultBranch = repoData.default_branch;
 
-    const MAX_FILES = 10;
-    const MAX_CONTENT_SIZE = 100000;
+    // 2. Get the commit SHA and tree SHA of the default branch
+    const { data: refData } = await octokit.rest.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${defaultBranch}`,
+    });
+    const baseCommitSha = refData.object.sha;
 
-    const validatedChanges = [];
+    const { data: commitData } = await octokit.rest.git.getCommit({
+      owner,
+      repo,
+      commit_sha: baseCommitSha,
+    });
+    const baseTreeSha = commitData.tree.sha;
 
-    for (const change of changes) {
-      if (!change.path || typeof change.path !== "string") continue;
-      if (!change.action || !["modify", "create"].includes(change.action)) continue;
-      if (typeof change.content !== "string") continue;
-      if (change.content.length > MAX_CONTENT_SIZE) continue;
-      if (change.path.includes("../") || change.path.startsWith("/")) continue;
-      if (change.path.includes("node_modules")) continue;
-      if (change.path.endsWith(".lock") || change.path.endsWith("-lock.json")) continue;
-      if (change.path.match(/\.(png|jpg|jpeg|gif|svg|ico|webp|woff|woff2|ttf|eot|mp4|webm|pdf|zip|tar|gz|bin|exe|dll)$/i)) continue;
+    // 3. Fetch the full repository tree for path existence validation
+    const { data: treeData } = await octokit.rest.git.getTree({
+      owner,
+      repo,
+      tree_sha: baseTreeSha,
+      recursive: "true",
+    });
 
-      if (change.action === "modify" && !validPaths.has(change.path)) {
-        continue; // Path doesn't exist to modify
+    const existingPaths = new Set(
+      treeData.tree
+        .filter((node) => node.type === "blob")
+        .map((node) => node.path)
+    );
+
+    // 4. Validate paths against the actual tree
+    for (const change of changes as Change[]) {
+      const type = change.type || change.action;
+      if (type === "modify" && !existingPaths.has(change.path)) {
+        return NextResponse.json(
+          { error: `Cannot modify ${change.path} as it does not exist in the repository` },
+          { status: 400 }
+        );
       }
-      
-      if (change.action === "create" && validPaths.has(change.path)) {
-        continue; // Path already exists, cannot create
-      }
-
-      validatedChanges.push(change);
-      
-      if (validatedChanges.length >= MAX_FILES) break;
-    }
-
-    if (validatedChanges.length === 0) {
-      return NextResponse.json({ error: "No valid changes to write." }, { status: 400 });
-    }
-
-    // 1. Get reference of default branch to get latest commit SHA
-    let defaultBranchRef;
-    try {
-      const { data: refData } = await octokit.rest.git.getRef({
-        owner,
-        repo,
-        ref: `heads/${default_branch}`,
-      });
-      defaultBranchRef = refData;
-    } catch (error) {
-      console.error("Failed to get default branch ref:", error);
-      return NextResponse.json({ error: "Failed to get default branch." }, { status: 500 });
-    }
-    const latestCommitSha = defaultBranchRef.object.sha;
-
-    // 2. Get the commit to get the base tree SHA
-    let baseCommit;
-    try {
-      const { data: commitData } = await octokit.rest.git.getCommit({
-        owner,
-        repo,
-        commit_sha: latestCommitSha,
-      });
-      baseCommit = commitData;
-    } catch (error) {
-      console.error("Failed to get base commit:", error);
-      return NextResponse.json({ error: "Failed to get base commit." }, { status: 500 });
-    }
-    const baseTreeSha = baseCommit.tree.sha;
-
-    // 3. Create blobs for each valid change
-    const treeChanges = [];
-    for (const change of validatedChanges) {
-      try {
-        const { data: blobData } = await octokit.rest.git.createBlob({
-          owner,
-          repo,
-          content: change.content,
-          encoding: "utf-8",
-        });
-        treeChanges.push({
-          path: change.path,
-          mode: "100644" as const,
-          type: "blob" as const,
-          sha: blobData.sha,
-        });
-      } catch (error) {
-        console.error(`Failed to create blob for ${change.path}:`, error);
-        return NextResponse.json({ error: `Failed to create blob for ${change.path}.` }, { status: 500 });
+      if (type === "create" && existingPaths.has(change.path)) {
+        return NextResponse.json(
+          { error: `Cannot create ${change.path} as it already exists in the repository` },
+          { status: 400 }
+        );
       }
     }
 
-    // 4. Create a new tree
-    let newTree;
-    try {
-      const { data: treeData } = await octokit.rest.git.createTree({
+    // 5. Create blobs for the new file contents
+    const newTreeNodes: any[] = [];
+    for (const change of changes as Change[]) {
+      const { data: blobData } = await octokit.rest.git.createBlob({
         owner,
         repo,
-        base_tree: baseTreeSha,
-        tree: treeChanges,
+        content: change.content,
+        encoding: "utf-8",
       });
-      newTree = treeData;
-    } catch (error) {
-      console.error("Failed to create new tree:", error);
-      return NextResponse.json({ error: "Failed to create new tree." }, { status: 500 });
+
+      newTreeNodes.push({
+        path: change.path,
+        mode: "100644", // standard file mode
+        type: "blob",
+        sha: blobData.sha,
+      });
     }
 
-    // 5. Create a new commit
-    let newCommit;
-    const commitMessage = request ? `Implement: ${request.substring(0, 50)}...` : "Apply CodePilot AI changes";
-    try {
-      const { data: commitData } = await octokit.rest.git.createCommit({
-        owner,
-        repo,
-        message: commitMessage,
-        tree: newTree.sha,
-        parents: [latestCommitSha],
-      });
-      newCommit = commitData;
-    } catch (error) {
-      console.error("Failed to create commit:", error);
-      return NextResponse.json({ error: "Failed to create commit." }, { status: 500 });
-    }
+    // 6. Create a new tree based on the existing tree
+    const { data: newTreeData } = await octokit.rest.git.createTree({
+      owner,
+      repo,
+      base_tree: baseTreeSha,
+      tree: newTreeNodes,
+    });
 
-    // 6. Create a new branch
-    const branchName = `codepilot-${Date.now()}`;
-    try {
-      await octokit.rest.git.createRef({
-        owner,
-        repo,
-        ref: `refs/heads/${branchName}`,
-        sha: newCommit.sha,
-      });
-    } catch (error) {
-      console.error("Failed to create branch:", error);
-      return NextResponse.json({ error: "Failed to create branch." }, { status: 500 });
-    }
+    // 7. Create a new commit
+    const commitMessage = userRequest
+      ? `Apply changes: ${userRequest.slice(0, 50)}${userRequest.length > 50 ? "..." : ""}`
+      : "Apply changes from CodePilot";
+
+    const { data: newCommitData } = await octokit.rest.git.createCommit({
+      owner,
+      repo,
+      message: commitMessage,
+      tree: newTreeData.sha,
+      parents: [baseCommitSha],
+    });
+
+    // 8. Create a new branch
+    const branchName = `codepilot-changes-${crypto.randomBytes(4).toString("hex")}-${Date.now()}`;
+    await octokit.rest.git.createRef({
+      owner,
+      repo,
+      ref: `refs/heads/${branchName}`,
+      sha: newCommitData.sha,
+    });
 
     return NextResponse.json({
-      message: "Changes written successfully.",
+      message: "Successfully created branch with approved changes",
       branch: branchName,
-      commit_sha: newCommit.sha,
-      files: validatedChanges.map(c => c.path),
-    }, { status: 200 });
-
+      commitSha: newCommitData.sha,
+      changedFiles: changes.map((c) => c.path),
+    });
   } catch (error: any) {
-    console.error("Chat write API error:", error);
-    return NextResponse.json({ error: error.message || "An unexpected error occurred." }, { status: 500 });
+    console.error("Error writing to GitHub:", error);
+    return NextResponse.json(
+      { error: "Failed to write changes to GitHub", details: error?.message || String(error) },
+      { status: 500 }
+    );
   }
 }

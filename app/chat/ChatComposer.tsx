@@ -11,6 +11,8 @@ export function ChatComposer() {
   const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
   const [proposedChanges, setProposedChanges] = useState<any[] | null>(null);
   const [changesApprovalStatus, setChangesApprovalStatus] = useState<'pending' | 'approved' | null>(null);
+  const [isWriting, setIsWriting] = useState(false);
+  const [writeResult, setWriteResult] = useState<{ branch: string; commitSha: string; changedFiles: string[] } | null>(null);
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -21,6 +23,7 @@ export function ChatComposer() {
     setApprovalStatus(null);
     setProposedChanges(null);
     setChangesApprovalStatus(null);
+    setWriteResult(null);
 
     try {
       const res = await fetch("/api/chat", {
@@ -79,6 +82,42 @@ export function ChatComposer() {
       setError(err.message || "Network error.");
     } finally {
       setIsImplementing(false);
+    }
+  };
+
+  const handleApproveChanges = async () => {
+    setIsWriting(true);
+    setError(null);
+    setWriteResult(null);
+
+    try {
+      const res = await fetch("/api/chat/write", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          changes: proposedChanges,
+          request: response?.prompt,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || data.details || "Failed to write changes to GitHub.");
+      } else {
+        setChangesApprovalStatus('approved');
+        setWriteResult({
+          branch: data.branch,
+          commitSha: data.commitSha,
+          changedFiles: data.changedFiles,
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || "Network error.");
+    } finally {
+      setIsWriting(false);
     }
   };
 
@@ -181,15 +220,19 @@ export function ChatComposer() {
             {changesApprovalStatus === 'pending' && (
               <button 
                 type="button"
-                onClick={(e) => { e.preventDefault(); setChangesApprovalStatus('approved'); }}
+                onClick={(e) => { e.preventDefault(); handleApproveChanges(); }}
                 style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                disabled={isWriting}
               >
-                Approve Changes
+                {isWriting ? "Writing to GitHub..." : "Approve Changes"}
               </button>
             )}
-            {changesApprovalStatus === 'approved' && (
-              <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontWeight: 'bold' }}>
-                Changes approved. Ready to write to GitHub.
+            {changesApprovalStatus === 'approved' && writeResult && (
+              <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px' }}>
+                <strong>Changes written to GitHub.</strong><br />
+                Branch: {writeResult.branch}<br />
+                Commit: {writeResult.commitSha}<br />
+                Files: {writeResult.changedFiles.join(", ")}
               </div>
             )}
           </div>
