@@ -13,6 +13,8 @@ export function ChatComposer() {
   const [changesApprovalStatus, setChangesApprovalStatus] = useState<'pending' | 'approved' | null>(null);
   const [isWriting, setIsWriting] = useState(false);
   const [writeResult, setWriteResult] = useState<{ branch: string; commitSha: string; changedFiles: string[] } | null>(null);
+  const [isCreatingPr, setIsCreatingPr] = useState(false);
+  const [prResult, setPrResult] = useState<{ number: number; url: string; title: string; head: string; base: string; message: string } | null>(null);
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -24,6 +26,7 @@ export function ChatComposer() {
     setProposedChanges(null);
     setChangesApprovalStatus(null);
     setWriteResult(null);
+    setPrResult(null);
 
     try {
       const res = await fetch("/api/chat", {
@@ -89,6 +92,7 @@ export function ChatComposer() {
     setIsWriting(true);
     setError(null);
     setWriteResult(null);
+    setPrResult(null);
 
     try {
       const res = await fetch("/api/chat/write", {
@@ -118,6 +122,45 @@ export function ChatComposer() {
       setError(err.message || "Network error.");
     } finally {
       setIsWriting(false);
+    }
+  };
+
+  const handleCreatePr = async () => {
+    if (!writeResult) return;
+    
+    setIsCreatingPr(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/chat/pr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          branch: writeResult.branch,
+          request: response?.prompt,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || data.details || "Failed to create Pull Request.");
+      } else {
+        setPrResult({
+          message: data.message,
+          number: data.pull_request.number,
+          url: data.pull_request.url,
+          title: data.pull_request.title,
+          head: data.pull_request.head,
+          base: data.pull_request.base,
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || "Network error.");
+    } finally {
+      setIsCreatingPr(false);
     }
   };
 
@@ -233,6 +276,34 @@ export function ChatComposer() {
                 Branch: {writeResult.branch}<br />
                 Commit: {writeResult.commitSha}<br />
                 Files: {writeResult.changedFiles.join(", ")}
+              </div>
+            )}
+            
+            {changesApprovalStatus === 'approved' && writeResult && !prResult && (
+              <div style={{ marginTop: '16px' }}>
+                <button 
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); handleCreatePr(); }}
+                  style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                  disabled={isCreatingPr}
+                >
+                  {isCreatingPr ? "Creating Pull Request..." : "Create Pull Request"}
+                </button>
+              </div>
+            )}
+            
+            {prResult && (
+              <div style={{ marginTop: '16px', padding: '12px', background: '#e6f7ff', color: '#005580', borderRadius: '4px', border: '1px solid #b3e6ff' }}>
+                <strong>{prResult.message}</strong><br />
+                <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                  <strong>#{prResult.number}:</strong> {prResult.title}<br />
+                  <span style={{ color: '#666' }}><code>{prResult.head}</code> → <code>{prResult.base}</code></span>
+                </div>
+                <div style={{ marginTop: '12px' }}>
+                  <a href={prResult.url} target="_blank" rel="noreferrer" style={{ padding: '6px 12px', background: '#0066cc', color: 'white', textDecoration: 'none', borderRadius: '4px', fontSize: '14px', display: 'inline-block' }}>
+                    View Pull Request
+                  </a>
+                </div>
               </div>
             )}
           </div>
