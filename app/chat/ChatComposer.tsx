@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DiffViewer } from "./DiffViewer";
 
 export function ChatComposer() {
   const [message, setMessage] = useState("");
@@ -11,6 +12,7 @@ export function ChatComposer() {
   const [approvalStatus, setApprovalStatus] = useState<'pending' | 'approved' | 'rejected' | null>(null);
   const [proposedChanges, setProposedChanges] = useState<any[] | null>(null);
   const [changesApprovalStatus, setChangesApprovalStatus] = useState<'pending' | 'approved' | null>(null);
+  const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0);
   const [isWriting, setIsWriting] = useState(false);
   const [writeResult, setWriteResult] = useState<{ branch: string; commitSha: string; changedFiles: string[] } | null>(null);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
@@ -256,19 +258,29 @@ export function ChatComposer() {
             <h3>Proposed changes</h3>
             <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-              {proposedChanges.map((change, idx) => (
-                <div key={idx} style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
-                  <div style={{ padding: '8px 12px', background: change.action === 'create' ? '#e6ffe6' : '#e6f7ff', borderBottom: '1px solid #eee', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{change.path}</span>
-                    <span style={{ textTransform: 'uppercase', fontSize: '12px', padding: '2px 6px', background: '#fff', borderRadius: '4px' }}>{change.action}</span>
-                  </div>
-                  <pre style={{ margin: 0, padding: '12px', background: '#f5f5f5', overflowX: 'auto', fontSize: '13px' }}>
-                    <code>{change.content}</code>
-                  </pre>
+            {proposedChanges.length > 0 && (
+              <div className="proposed-changes-container">
+                <div className="file-list">
+                  {proposedChanges.map((change, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`file-list-item ${selectedFileIndex === idx ? 'active' : ''}`}
+                      onClick={() => setSelectedFileIndex(idx)}
+                    >
+                      <span className="file-icon">📄</span>
+                      <span className="file-path">{change.path}</span>
+                      <span className={`file-action ${change.action}`}>{change.action}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <div className="file-diff-view">
+                  <DiffViewer 
+                    oldContent={proposedChanges[selectedFileIndex]?.action === 'create' ? '' : (response?.context?.files?.[proposedChanges[selectedFileIndex]?.path] || '')}
+                    newContent={proposedChanges[selectedFileIndex]?.content || ''}
+                  />
+                </div>
+              </div>
+            )}
 
             <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' }}>
               {changesApprovalStatus === 'pending' && (
