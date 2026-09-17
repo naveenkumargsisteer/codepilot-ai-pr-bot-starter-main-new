@@ -23,8 +23,9 @@ export function ChatComposer() {
   const hasCodeChangePlan = response?.ai_response ? (response.ai_response.includes('PLAN') || response.ai_response.includes('FILES TO CHANGE')) : false;
   const isReviewMode = proposedChanges && proposedChanges.length > 0 && changesApprovalStatus === 'pending';
 
-  const handleSubmit = async () => {
-    if (!message.trim()) return;
+  const handleSubmit = async (overrideMessage?: string | React.MouseEvent) => {
+    const textToSubmit = typeof overrideMessage === 'string' ? overrideMessage : message;
+    if (!textToSubmit.trim()) return;
 
     setIsLoading(true);
     setError(null);
@@ -42,7 +43,7 @@ export function ChatComposer() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message: textToSubmit }),
       });
 
       const data = await res.json();
@@ -61,6 +62,13 @@ export function ChatComposer() {
     } finally {
       setIsLoading(false);
       setIsMobileModalOpen(true);
+    }
+  };
+
+  const handleTryAgain = () => {
+    if (response?.prompt) {
+      setMessage(response.prompt);
+      handleSubmit(response.prompt);
     }
   };
 
@@ -196,7 +204,24 @@ export function ChatComposer() {
           </div>
         )}
 
-        {response && (
+        {response && response.ai_response?.includes('AI_ERROR_429') && (
+          <div style={{ marginTop: '12px', padding: '16px', background: '#fff3cd', color: '#856404', borderRadius: '4px', border: '1px solid #ffeeba', fontSize: '14px' }}>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '18px' }}>⚠️</span> AI request limit reached
+            </h3>
+            <p>Gemini is temporarily rate-limiting requests. Please wait a moment and try again.</p>
+            <p style={{ opacity: 0.8, fontSize: '13px' }}>Your repository and GitHub connection are still active.</p>
+            <button
+              onClick={handleTryAgain}
+              style={{ marginTop: '12px', padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+              disabled={isLoading}
+            >
+              {isLoading ? "Retrying..." : "Try Again"}
+            </button>
+          </div>
+        )}
+
+        {response && !response.ai_response?.includes('AI_ERROR_429') && (
           <div style={{ marginTop: '12px', padding: '12px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontSize: '14px' }}>
             <strong>{response.message}</strong><br />
             <span style={{ opacity: 0.8 }}>Received prompt: {response.prompt}</span>
