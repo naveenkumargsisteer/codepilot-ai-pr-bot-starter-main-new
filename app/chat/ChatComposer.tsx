@@ -21,6 +21,7 @@ export function ChatComposer() {
 
   const hasResults = !!error || !!response || !!proposedChanges;
   const hasCodeChangePlan = response?.ai_response ? (response.ai_response.includes('PLAN') || response.ai_response.includes('FILES TO CHANGE')) : false;
+  const isReviewMode = proposedChanges && proposedChanges.length > 0 && changesApprovalStatus === 'pending';
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -134,6 +135,11 @@ export function ChatComposer() {
     }
   };
 
+  const handleCancelReview = () => {
+    setProposedChanges(null);
+    setChangesApprovalStatus(null);
+  };
+
   const handleCreatePr = async () => {
     if (!writeResult) return;
     
@@ -174,13 +180,13 @@ export function ChatComposer() {
   };
 
   return (
-    <div className="chatLayout">
+    <div className={`chatLayout ${isReviewMode ? 'review-mode' : ''}`}>
       <div className={`resultsBox ${isMobileModalOpen ? 'open' : ''}`}>
-        {hasResults && (
+        {hasResults && !isReviewMode && (
            <button className="closeModalBtn" onClick={() => setIsMobileModalOpen(false)}>Close Results</button>
         )}
         
-        {!hasResults && (
+        {!hasResults && !isReviewMode && (
           <div style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>No analysis results yet.</div>
         )}
 
@@ -254,9 +260,21 @@ export function ChatComposer() {
         )}
 
         {proposedChanges && (
-          <div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
-            <h3>Proposed changes</h3>
-            <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
+          <div className={isReviewMode ? "fullscreen-review" : ""} style={!isReviewMode ? { marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' } : {}}>
+            {isReviewMode && (
+              <div className="review-header">
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '20px' }}>Review Proposed Changes</h3>
+                  <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic', margin: '4px 0 0 0' }}>Review and approve the changes before writing to GitHub.</p>
+                </div>
+              </div>
+            )}
+            {!isReviewMode && (
+              <>
+                <h3>Proposed changes</h3>
+                <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
+              </>
+            )}
             
             {proposedChanges.length > 0 && (
               <div className="proposed-changes-container">
@@ -282,16 +300,26 @@ export function ChatComposer() {
               </div>
             )}
 
-            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' }}>
+            <div className={isReviewMode ? "review-actions" : ""} style={!isReviewMode ? { marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' } : {}}>
               {changesApprovalStatus === 'pending' && (
-                <button 
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); handleApproveChanges(); }}
-                  style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                  disabled={isWriting}
-                >
-                  {isWriting ? "Writing to GitHub..." : "Approve Changes"}
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); handleCancelReview(); }}
+                    style={{ padding: '10px 20px', background: '#fff', color: '#333', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}
+                    disabled={isWriting}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); handleApproveChanges(); }}
+                    style={{ padding: '10px 20px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 'bold' }}
+                    disabled={isWriting}
+                  >
+                    {isWriting ? "Writing to GitHub..." : "Approve Changes"}
+                  </button>
+                </div>
               )}
               {changesApprovalStatus === 'approved' && writeResult && (
                 <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px' }}>
