@@ -18,6 +18,7 @@ export function ChatComposer() {
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
 
   const hasResults = !!error || !!response || !!proposedChanges;
+  const hasCodeChangePlan = response?.ai_response ? (response.ai_response.includes('PLAN') || response.ai_response.includes('FILES TO CHANGE')) : false;
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -199,22 +200,34 @@ export function ChatComposer() {
                 <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
                   {approvalStatus === 'pending' && (
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); handleApprovePlan(); }}
-                        style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                        disabled={isImplementing}
-                      >
-                        {isImplementing ? "Generating code..." : "Approve Plan"}
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
-                        style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                        disabled={isImplementing}
-                      >
-                        Reject Plan
-                      </button>
+                      {hasCodeChangePlan ? (
+                        <>
+                          <button 
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); handleApprovePlan(); }}
+                            style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                            disabled={isImplementing}
+                          >
+                            {isImplementing ? "Generating code..." : "Approve Plan"}
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
+                            style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                            disabled={isImplementing}
+                          >
+                            Reject Plan
+                          </button>
+                        </>
+                      ) : (
+                        <button 
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); setResponse(null); setError(null); setIsMobileModalOpen(false); }}
+                          style={{ padding: '8px 16px', background: '#666', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Ok, got it
+                        </button>
+                      )}
                     </div>
                   )}
                   {approvalStatus === 'approved' && !proposedChanges && !isImplementing && (
@@ -310,7 +323,7 @@ export function ChatComposer() {
       </div>
 
       <div className="chatBox">
-        <div className="message bot"><div className="avatar botAvatar">AI</div><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
+        <div className="message bot"><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
         <div className="examplePrompt">Try: <span>Add Google OAuth login and store the Google account ID on the user model.</span></div>
         <div className="composer">
           <textarea
