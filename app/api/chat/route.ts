@@ -174,8 +174,18 @@ A short explanation of what the changes will accomplish.`;
     try {
       aiResponse = await generateGeminiResponse(promptContext);
     } catch (aiError: any) {
-      console.error("Gemini AI error:", aiError);
-      aiResponse = "Error: Could not generate AI response.";
+      const statusCode = aiError.status || aiError.statusCode || (aiError.message?.includes("GEMINI_API_KEY") ? 401 : 500);
+      const errorType = aiError.name || typeof aiError;
+      const errorMessage = aiError.message || String(aiError);
+      
+      console.error("Gemini AI Diagnostic Error:", {
+        status: statusCode,
+        type: errorType,
+        message: errorMessage,
+        category: `AI_ERROR_${statusCode}`
+      });
+
+      aiResponse = `Error: AI_ERROR_${statusCode}`;
     }
 
     return NextResponse.json({
