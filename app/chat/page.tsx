@@ -26,14 +26,7 @@ export default async function ChatPage() {
       </aside>
       <section className="content chatPage">
         <header className="topbar"><div><div className="eyebrow">AI Agent</div><h1>New coding task</h1></div><span className="connectionChip">● {selectedRepo ? `${selectedRepo.name} · ${selectedRepo.default_branch}` : 'No repository selected'}</span></header>
-        <div className="chatLayout">
-          <div className="chatBox">
-            <div className="message bot"><div className="avatar botAvatar">AI</div><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
-            <div className="examplePrompt">Try: <span>Add Google OAuth login and store the Google account ID on the user model.</span></div>
-            <ChatComposer />
-          </div>
-          <aside className="taskAside"><h3>Workflow</h3><div className="step done"><b>01</b><div><strong>Request</strong><small>Describe the change</small></div></div><div className="step activeStep"><b>02</b><div><strong>Analyze & plan</strong><small>Repository inspection</small></div></div><div className="step"><b>03</b><div><strong>Approval</strong><small>You approve the plan</small></div></div><div className="step"><b>04</b><div><strong>Implement</strong><small>Sandboxed agent</small></div></div><div className="step"><b>05</b><div><strong>Pull request</strong><small>Branch + PR link</small></div></div></aside>
-        </div>
+        <ChatComposer />
       </section>
     </main>
   );

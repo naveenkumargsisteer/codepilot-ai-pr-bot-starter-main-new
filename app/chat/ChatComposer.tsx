@@ -15,6 +15,9 @@ export function ChatComposer() {
   const [writeResult, setWriteResult] = useState<{ branch: string; commitSha: string; changedFiles: string[] } | null>(null);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [prResult, setPrResult] = useState<{ number: number; url: string; title: string; head: string; base: string; message: string } | null>(null);
+  const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
+
+  const hasResults = !!error || !!response || !!proposedChanges;
 
   const handleSubmit = async () => {
     if (!message.trim()) return;
@@ -27,6 +30,7 @@ export function ChatComposer() {
     setChangesApprovalStatus(null);
     setWriteResult(null);
     setPrResult(null);
+    setIsMobileModalOpen(false);
 
     try {
       const res = await fetch("/api/chat", {
@@ -52,6 +56,7 @@ export function ChatComposer() {
       setError(err.message || "Network error.");
     } finally {
       setIsLoading(false);
+      setIsMobileModalOpen(true);
     }
   };
 
@@ -85,6 +90,7 @@ export function ChatComposer() {
       setError(err.message || "Network error.");
     } finally {
       setIsImplementing(false);
+      setIsMobileModalOpen(true);
     }
   };
 
@@ -165,150 +171,164 @@ export function ChatComposer() {
   };
 
   return (
-    <>
-      <div className="composer">
-        <textarea
-          placeholder="Describe the code change you want..."
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          disabled={isLoading || isImplementing}
-        ></textarea>
-        <button
-          className="button primary"
-          onClick={handleSubmit}
-          disabled={!message.trim() || isLoading || isImplementing}
-        >
-          {isLoading ? "Analyzing..." : "Analyze repository →"}
-        </button>
-      </div>
-      <small className="hint">The first stage is read-only. Code changes require your plan approval.</small>
+    <div className="chatLayout">
+      <div className={`resultsBox ${isMobileModalOpen ? 'open' : ''}`}>
+        {hasResults && (
+           <button className="closeModalBtn" onClick={() => setIsMobileModalOpen(false)}>Close Results</button>
+        )}
+        
+        {!hasResults && (
+          <div style={{ color: '#999', textAlign: 'center', marginTop: '40px' }}>No analysis results yet.</div>
+        )}
 
-      {error && (
-        <div style={{ marginTop: '12px', padding: '12px', background: '#ffe6e6', color: '#cc0000', borderRadius: '4px', fontSize: '14px' }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {response && (
-        <div style={{ marginTop: '12px', padding: '12px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontSize: '14px' }}>
-          <strong>{response.message}</strong><br />
-          <span style={{ opacity: 0.8 }}>Received prompt: {response.prompt}</span>
-          {response.ai_response && (
-            <div style={{ marginTop: '12px', padding: '12px', background: '#ffffff', color: '#333', borderRadius: '4px', border: '1px solid #ccc', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-              <strong>AI Response:</strong><br />
-              {response.ai_response}
-              
-              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
-                {approvalStatus === 'pending' && (
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); handleApprovePlan(); }}
-                      style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                      disabled={isImplementing}
-                    >
-                      {isImplementing ? "Generating code..." : "Approve Plan"}
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
-                      style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                      disabled={isImplementing}
-                    >
-                      Reject Plan
-                    </button>
-                  </div>
-                )}
-                {approvalStatus === 'approved' && !proposedChanges && !isImplementing && (
-                  <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontWeight: 'bold' }}>
-                    Plan approved. Ready to implement.
-                  </div>
-                )}
-                {isImplementing && (
-                  <div style={{ padding: '8px', background: '#fff3cd', color: '#856404', borderRadius: '4px', fontWeight: 'bold' }}>
-                    Generating code changes... Please wait.
-                  </div>
-                )}
-                {approvalStatus === 'rejected' && (
-                  <div style={{ padding: '8px', background: '#ffe6e6', color: '#cc0000', borderRadius: '4px', fontWeight: 'bold' }}>
-                    Plan rejected.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {proposedChanges && (
-        <div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
-          <h3>Proposed changes</h3>
-          <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
-            {proposedChanges.map((change, idx) => (
-              <div key={idx} style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{ padding: '8px 12px', background: change.action === 'create' ? '#e6ffe6' : '#e6f7ff', borderBottom: '1px solid #eee', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{change.path}</span>
-                  <span style={{ textTransform: 'uppercase', fontSize: '12px', padding: '2px 6px', background: '#fff', borderRadius: '4px' }}>{change.action}</span>
-                </div>
-                <pre style={{ margin: 0, padding: '12px', background: '#f5f5f5', overflowX: 'auto', fontSize: '13px' }}>
-                  <code>{change.content}</code>
-                </pre>
-              </div>
-            ))}
+        {error && (
+          <div style={{ marginTop: '12px', padding: '12px', background: '#ffe6e6', color: '#cc0000', borderRadius: '4px', fontSize: '14px' }}>
+            <strong>Error:</strong> {error}
           </div>
+        )}
 
-          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' }}>
-            {changesApprovalStatus === 'pending' && (
-              <button 
-                type="button"
-                onClick={(e) => { e.preventDefault(); handleApproveChanges(); }}
-                style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                disabled={isWriting}
-              >
-                {isWriting ? "Writing to GitHub..." : "Approve Changes"}
-              </button>
-            )}
-            {changesApprovalStatus === 'approved' && writeResult && (
-              <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px' }}>
-                <strong>Changes written to GitHub.</strong><br />
-                Branch: {writeResult.branch}<br />
-                Commit: {writeResult.commitSha}<br />
-                Files: {writeResult.changedFiles.join(", ")}
+        {response && (
+          <div style={{ marginTop: '12px', padding: '12px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontSize: '14px' }}>
+            <strong>{response.message}</strong><br />
+            <span style={{ opacity: 0.8 }}>Received prompt: {response.prompt}</span>
+            {response.ai_response && (
+              <div style={{ marginTop: '12px', padding: '12px', background: '#ffffff', color: '#333', borderRadius: '4px', border: '1px solid #ccc', whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
+                <strong>AI Response:</strong><br />
+                {response.ai_response}
+                
+                <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #eee' }}>
+                  {approvalStatus === 'pending' && (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); handleApprovePlan(); }}
+                        style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                        disabled={isImplementing}
+                      >
+                        {isImplementing ? "Generating code..." : "Approve Plan"}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
+                        style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                        disabled={isImplementing}
+                      >
+                        Reject Plan
+                      </button>
+                    </div>
+                  )}
+                  {approvalStatus === 'approved' && !proposedChanges && !isImplementing && (
+                    <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px', fontWeight: 'bold' }}>
+                      Plan approved. Ready to implement.
+                    </div>
+                  )}
+                  {isImplementing && (
+                    <div style={{ padding: '8px', background: '#fff3cd', color: '#856404', borderRadius: '4px', fontWeight: 'bold' }}>
+                      Generating code changes... Please wait.
+                    </div>
+                  )}
+                  {approvalStatus === 'rejected' && (
+                    <div style={{ padding: '8px', background: '#ffe6e6', color: '#cc0000', borderRadius: '4px', fontWeight: 'bold' }}>
+                      Plan rejected.
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+          </div>
+        )}
+
+        {proposedChanges && (
+          <div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '4px', border: '1px solid #ddd' }}>
+            <h3>Proposed changes</h3>
+            <p style={{ fontSize: '14px', color: '#666', fontStyle: 'italic' }}>No changes have been written to GitHub yet.</p>
             
-            {changesApprovalStatus === 'approved' && writeResult && !prResult && (
-              <div style={{ marginTop: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '16px' }}>
+              {proposedChanges.map((change, idx) => (
+                <div key={idx} style={{ border: '1px solid #eee', borderRadius: '4px', overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 12px', background: change.action === 'create' ? '#e6ffe6' : '#e6f7ff', borderBottom: '1px solid #eee', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{change.path}</span>
+                    <span style={{ textTransform: 'uppercase', fontSize: '12px', padding: '2px 6px', background: '#fff', borderRadius: '4px' }}>{change.action}</span>
+                  </div>
+                  <pre style={{ margin: 0, padding: '12px', background: '#f5f5f5', overflowX: 'auto', fontSize: '13px' }}>
+                    <code>{change.content}</code>
+                  </pre>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #ddd' }}>
+              {changesApprovalStatus === 'pending' && (
                 <button 
                   type="button"
-                  onClick={(e) => { e.preventDefault(); handleCreatePr(); }}
-                  style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
-                  disabled={isCreatingPr}
+                  onClick={(e) => { e.preventDefault(); handleApproveChanges(); }}
+                  style={{ padding: '8px 16px', background: '#0066cc', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                  disabled={isWriting}
                 >
-                  {isCreatingPr ? "Creating Pull Request..." : "Create Pull Request"}
+                  {isWriting ? "Writing to GitHub..." : "Approve Changes"}
                 </button>
-              </div>
-            )}
-            
-            {prResult && (
-              <div style={{ marginTop: '16px', padding: '12px', background: '#e6f7ff', color: '#005580', borderRadius: '4px', border: '1px solid #b3e6ff' }}>
-                <strong>{prResult.message}</strong><br />
-                <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                  <strong>#{prResult.number}:</strong> {prResult.title}<br />
-                  <span style={{ color: '#666' }}><code>{prResult.head}</code> → <code>{prResult.base}</code></span>
+              )}
+              {changesApprovalStatus === 'approved' && writeResult && (
+                <div style={{ padding: '8px', background: '#e6ffe6', color: '#006600', borderRadius: '4px' }}>
+                  <strong>Changes written to GitHub.</strong><br />
+                  Branch: {writeResult.branch}<br />
+                  Commit: {writeResult.commitSha}<br />
+                  Files: {writeResult.changedFiles.join(", ")}
                 </div>
-                <div style={{ marginTop: '12px' }}>
-                  <a href={prResult.url} target="_blank" rel="noreferrer" style={{ padding: '6px 12px', background: '#0066cc', color: 'white', textDecoration: 'none', borderRadius: '4px', fontSize: '14px', display: 'inline-block' }}>
-                    View Pull Request
-                  </a>
+              )}
+              
+              {changesApprovalStatus === 'approved' && writeResult && !prResult && (
+                <div style={{ marginTop: '16px' }}>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); handleCreatePr(); }}
+                    style={{ padding: '8px 16px', background: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
+                    disabled={isCreatingPr}
+                  >
+                    {isCreatingPr ? "Creating Pull Request..." : "Create Pull Request"}
+                  </button>
                 </div>
-              </div>
-            )}
+              )}
+              
+              {prResult && (
+                <div style={{ marginTop: '16px', padding: '12px', background: '#e6f7ff', color: '#005580', borderRadius: '4px', border: '1px solid #b3e6ff' }}>
+                  <strong>{prResult.message}</strong><br />
+                  <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                    <strong>#{prResult.number}:</strong> {prResult.title}<br />
+                    <span style={{ color: '#666' }}><code>{prResult.head}</code> → <code>{prResult.base}</code></span>
+                  </div>
+                  <div style={{ marginTop: '12px' }}>
+                    <a href={prResult.url} target="_blank" rel="noreferrer" style={{ padding: '6px 12px', background: '#0066cc', color: 'white', textDecoration: 'none', borderRadius: '4px', fontSize: '14px', display: 'inline-block' }}>
+                      View Pull Request
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
+        )}
+      </div>
+
+      <div className="chatBox">
+        <div className="message bot"><div className="avatar botAvatar">AI</div><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
+        <div className="examplePrompt">Try: <span>Add Google OAuth login and store the Google account ID on the user model.</span></div>
+        <div className="composer">
+          <textarea
+            placeholder="Describe the code change you want..."
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            disabled={isLoading || isImplementing}
+          ></textarea>
+          <button
+            className="button primary"
+            onClick={handleSubmit}
+            disabled={!message.trim() || isLoading || isImplementing}
+          >
+            {isLoading ? "Analyzing..." : "Analyze repository →"}
+          </button>
         </div>
-      )}
-    </>
+        <small className="hint">The first stage is read-only. Code changes require your plan approval.</small>
+      </div>
+    </div>
   );
 }
