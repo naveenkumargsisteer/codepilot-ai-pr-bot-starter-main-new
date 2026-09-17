@@ -22,8 +22,7 @@ export async function generateGeminiResponse(prompt: string): Promise<string> {
     }
 
     return response.text;
-  } catch (error) {
-    console.error("Error communicating with Gemini SDK:", error);
-    throw new Error("Failed to generate response from Gemini.");
+  } catch (error: any) {
+    throw error;
   }
 }
