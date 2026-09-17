@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { diffLines } from 'diff';
 
 interface DiffViewerProps {
@@ -8,18 +8,68 @@ interface DiffViewerProps {
 
 export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
   const [mode, setMode] = useState<'split' | 'unified'>('split');
+  const [currentHunk, setCurrentHunk] = useState(1);
 
   const diffResult = useMemo(() => {
     return diffLines(oldContent, newContent);
   }, [oldContent, newContent]);
 
+  const hunks = useMemo(() => {
+    let count = 0;
+    let inHunk = false;
+    for (let i = 0; i < diffResult.length; i++) {
+      if (diffResult[i].added || diffResult[i].removed) {
+        if (!inHunk) {
+          count++;
+          inHunk = true;
+        }
+      } else {
+        inHunk = false;
+      }
+    }
+    return count;
+  }, [diffResult]);
+
+  useEffect(() => {
+    setCurrentHunk(1);
+  }, [diffResult]);
+
+  const goToNextHunk = () => {
+    if (currentHunk < hunks) {
+      const next = currentHunk + 1;
+      setCurrentHunk(next);
+      document.getElementById(`hunk-${mode}-${next}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
+  const goToPrevHunk = () => {
+    if (currentHunk > 1) {
+      const prev = currentHunk - 1;
+      setCurrentHunk(prev);
+      document.getElementById(`hunk-${mode}-${prev}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   const renderUnified = () => {
     let oldLineNum = 1;
     let newLineNum = 1;
+    let currentHunkCounter = 0;
+    let inHunk = false;
     
     return (
       <div className="diff-unified">
         {diffResult.map((part, index) => {
+          let partIsHunkStart = false;
+          if (part.added || part.removed) {
+            if (!inHunk) {
+              currentHunkCounter++;
+              partIsHunkStart = true;
+              inHunk = true;
+            }
+          } else {
+            inHunk = false;
+          }
+
           const lines = part.value.replace(/\n$/, '').split('\n');
           return lines.map((line, lineIndex) => {
             const currentOldNum = part.added ? '' : oldLineNum++;
@@ -30,8 +80,9 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
             if (part.added) { lineClass += ' diff-added'; prefix = '+'; }
             if (part.removed) { lineClass += ' diff-removed'; prefix = '-'; }
             
+            const isFirstLineOfHunk = partIsHunkStart && lineIndex === 0;
             return (
-              <div key={`${index}-${lineIndex}`} className={lineClass}>
+              <div key={`${index}-${lineIndex}`} id={isFirstLineOfHunk ? `hunk-unified-${currentHunkCounter}` : undefined} className={lineClass}>
                 <div className="diff-line-num">{currentOldNum}</div>
                 <div className="diff-line-num">{currentNewNum}</div>
                 <div className="diff-line-content">
@@ -50,12 +101,26 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
     let oldLineNum = 1;
     let newLineNum = 1;
 
-    const rows: { type: 'common' | 'added' | 'removed' | 'changed', left?: string, right?: string, leftNum?: number, rightNum?: number }[] = [];
+    const rows: { type: 'common' | 'added' | 'removed' | 'changed', left?: string, right?: string, leftNum?: number, rightNum?: number, hunkStart?: number }[] = [];
+    
+    let currentHunkCounter = 0;
+    let inHunk = false;
 
     for (let i = 0; i < diffResult.length; i++) {
       const part = diffResult[i];
       const lines = part.value.replace(/\n$/, '').split('\n');
       
+      let partIsHunkStart = false;
+      if (part.added || part.removed) {
+        if (!inHunk) {
+          currentHunkCounter++;
+          partIsHunkStart = true;
+          inHunk = true;
+        }
+      } else {
+        inHunk = false;
+      }
+
       if (!part.added && !part.removed) {
         lines.forEach(line => {
           rows.push({ type: 'common', left: line, right: line, leftNum: oldLineNum++, rightNum: newLineNum++ });
@@ -71,18 +136,19 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
               left: j < lines.length ? lines[j] : undefined,
               right: j < addedLines.length ? addedLines[j] : undefined,
               leftNum: j < lines.length ? oldLineNum++ : undefined,
-              rightNum: j < addedLines.length ? newLineNum++ : undefined
+              rightNum: j < addedLines.length ? newLineNum++ : undefined,
+              hunkStart: (partIsHunkStart && j === 0) ? currentHunkCounter : undefined
             });
           }
           i++; 
         } else {
-          lines.forEach(line => {
-            rows.push({ type: 'removed', left: line, leftNum: oldLineNum++ });
+          lines.forEach((line, j) => {
+            rows.push({ type: 'removed', left: line, leftNum: oldLineNum++, hunkStart: (partIsHunkStart && j === 0) ? currentHunkCounter : undefined });
           });
         }
       } else if (part.added) {
-        lines.forEach(line => {
-          rows.push({ type: 'added', right: line, rightNum: newLineNum++ });
+        lines.forEach((line, j) => {
+          rows.push({ type: 'added', right: line, rightNum: newLineNum++, hunkStart: (partIsHunkStart && j === 0) ? currentHunkCounter : undefined });
         });
       }
     }
@@ -90,7 +156,7 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
     return (
       <div className="diff-split">
         {rows.map((row, index) => (
-          <div key={index} className="diff-split-row">
+          <div key={index} id={row.hunkStart ? `hunk-split-${row.hunkStart}` : undefined} className="diff-split-row">
             <div className={`diff-split-half ${row.left !== undefined ? (row.type === 'removed' || row.type === 'changed' ? 'diff-removed' : '') : 'diff-empty'}`}>
               <div className="diff-line-num">{row.leftNum || ''}</div>
               <div className="diff-line-content">
@@ -113,7 +179,7 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
 
   return (
     <div className="diff-viewer">
-      <div className="diff-header">
+      <div className="diff-header" style={{ justifyContent: 'space-between' }}>
         <div className="diff-tabs">
           <button 
             type="button"
@@ -130,6 +196,28 @@ export function DiffViewer({ oldContent = '', newContent }: DiffViewerProps) {
             Unified
           </button>
         </div>
+        
+        {hunks > 0 && (
+          <div className="diff-navigation" style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#8b949e', fontSize: '13px' }}>
+            <button
+              type="button"
+              onClick={goToPrevHunk}
+              disabled={currentHunk <= 1}
+              style={{ background: 'transparent', border: '1px solid #30363d', color: currentHunk <= 1 ? '#484f58' : '#c9d1d9', borderRadius: '4px', padding: '2px 10px', cursor: currentHunk <= 1 ? 'not-allowed' : 'pointer' }}
+            >
+              &uarr;
+            </button>
+            <span>{currentHunk} / {hunks}</span>
+            <button
+              type="button"
+              onClick={goToNextHunk}
+              disabled={currentHunk >= hunks}
+              style={{ background: 'transparent', border: '1px solid #30363d', color: currentHunk >= hunks ? '#484f58' : '#c9d1d9', borderRadius: '4px', padding: '2px 10px', cursor: currentHunk >= hunks ? 'not-allowed' : 'pointer' }}
+            >
+              &darr;
+            </button>
+          </div>
+        )}
       </div>
       <div className="diff-body">
         {mode === 'split' ? renderSplit() : renderUnified()}
