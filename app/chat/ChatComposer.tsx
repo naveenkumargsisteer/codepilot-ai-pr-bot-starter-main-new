@@ -23,6 +23,7 @@ export function ChatComposer() {
   // Jira Integration
   const [pendingJiraTickets, setPendingJiraTickets] = useState<any[]>([]);
   const [isProcessingJira, setIsProcessingJira] = useState(false);
+  const [activeJiraId, setActiveJiraId] = useState<string | null>(null);
 
   const hasResults = !!error || !!response || !!proposedChanges;
   const hasCodeChangePlan = response?.ai_response ? (response.ai_response.includes('PLAN') || response.ai_response.includes('FILES TO CHANGE')) : false;
@@ -65,11 +66,11 @@ export function ChatComposer() {
         // Ensure ticket isn't shown in pending list
         setPendingJiraTickets(prev => prev.filter(t => t.id !== autoJiraId));
 
+        setActiveJiraId(autoJiraId);
         handleSubmit(autoPrompt).then(async (success) => {
-          if (success) {
-            await updateJiraTicketStatus(autoJiraId, 'processed', 'processing');
-          } else {
+          if (!success) {
             await updateJiraTicketStatus(autoJiraId, 'pending', 'processing');
+            setActiveJiraId(null);
           }
         });
         
@@ -93,14 +94,15 @@ export function ChatComposer() {
     setPendingJiraTickets(prev => prev.filter(t => t.id !== ticket.id));
     setIsProcessingJira(false);
 
+    setActiveJiraId(ticket.id);
+
     // Proceed with ChatBot handoff
     const success = await handleSubmit(promptText);
     
-    if (success) {
-      await updateJiraTicketStatus(ticket.id, 'processed', 'processing');
-    } else {
+    if (!success) {
       // Revert back so it can be retried
       await updateJiraTicketStatus(ticket.id, 'pending', 'processing');
+      setActiveJiraId(null);
     }
   };
 
@@ -240,9 +242,13 @@ export function ChatComposer() {
     }
   };
 
-  const handleCancelReview = () => {
+  const handleCancelReview = async () => {
     setProposedChanges(null);
     setChangesApprovalStatus(null);
+    if (activeJiraId) {
+      await updateJiraTicketStatus(activeJiraId, 'pending', 'processing');
+      setActiveJiraId(null);
+    }
   };
 
   const handleCreatePr = async () => {
@@ -276,6 +282,11 @@ export function ChatComposer() {
           head: data.pull_request.head,
           base: data.pull_request.base,
         });
+
+        if (activeJiraId) {
+          await updateJiraTicketStatus(activeJiraId, 'processed', 'processing');
+          setActiveJiraId(null);
+        }
       }
     } catch (err: any) {
       setError(err.message || "Network error.");
@@ -342,7 +353,14 @@ export function ChatComposer() {
                           </button>
                           <button 
                             type="button"
-                            onClick={(e) => { e.preventDefault(); setApprovalStatus('rejected'); }}
+                            onClick={async (e) => { 
+                              e.preventDefault(); 
+                              setApprovalStatus('rejected'); 
+                              if (activeJiraId) {
+                                await updateJiraTicketStatus(activeJiraId, 'pending', 'processing');
+                                setActiveJiraId(null);
+                              }
+                            }}
                             style={{ padding: '8px 16px', background: '#cc0000', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
                             disabled={isImplementing}
                           >
@@ -352,7 +370,16 @@ export function ChatComposer() {
                       ) : (
                         <button 
                           type="button"
-                          onClick={(e) => { e.preventDefault(); setResponse(null); setError(null); setIsMobileModalOpen(false); }}
+                          onClick={async (e) => { 
+                            e.preventDefault(); 
+                            setResponse(null); 
+                            setError(null); 
+                            setIsMobileModalOpen(false); 
+                            if (activeJiraId) {
+                              await updateJiraTicketStatus(activeJiraId, 'pending', 'processing');
+                              setActiveJiraId(null);
+                            }
+                          }}
                           style={{ padding: '8px 16px', background: '#666', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontFamily: 'inherit' }}
                         >
                           Ok, got it
