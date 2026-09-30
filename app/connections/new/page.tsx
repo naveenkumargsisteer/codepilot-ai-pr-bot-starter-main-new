@@ -10,7 +10,9 @@ export default function NewConnection() {
         <nav>
           <Link className="nav" href="/">Dashboard</Link>
           <Link className="nav" href="/chat">AI Chat</Link>
+          <Link className="nav" href="/jira">Jira Tickets</Link>
           <Link className="nav active" href="/connections">Connections</Link>
+          <Link className="nav" href="/settings">Settings</Link>
         </nav>
       </aside>
       <section className="content narrow">
