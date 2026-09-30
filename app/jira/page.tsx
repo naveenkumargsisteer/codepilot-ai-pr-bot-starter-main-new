@@ -21,6 +21,7 @@ export default function JiraPage() {
             <h1>Jira Tickets</h1>
           </div>
         </header>
+
         <JiraTickets />
       </section>
     </main>
