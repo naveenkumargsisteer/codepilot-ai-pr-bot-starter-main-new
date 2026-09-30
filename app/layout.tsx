@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { MobileNav } from "./components/MobileNav";
 
 export const metadata: Metadata = {
   title: "CodePilot — AI PR Bot",
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <MobileNav />
+        {children}
+      </body>
     </html>
   );
 }

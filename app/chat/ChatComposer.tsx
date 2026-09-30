@@ -473,7 +473,7 @@ export function ChatComposer() {
           <div className="jira-notifications" style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {pendingJiraTickets.map(ticket => (
               <div key={ticket.id} style={{ padding: '12px', background: '#e0f2fe', borderRadius: '6px', border: '1px solid #bae6fd' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
                   <div>
                     <h4 style={{ margin: '0 0 4px 0', color: '#0369a1' }}>New Jira Ticket: {ticket.issue_key}</h4>
                     <p style={{ margin: '0', fontSize: '14px', color: '#0c4a6e' }}>{ticket.summary}</p>
