@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DiffViewer } from "./DiffViewer";
 
 export function ChatComposer() {
@@ -18,14 +18,88 @@ export function ChatComposer() {
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [prResult, setPrResult] = useState<{ number: number; url: string; title: string; head: string; base: string; message: string } | null>(null);
   const [isMobileModalOpen, setIsMobileModalOpen] = useState(false);
+  
+  // Jira Integration
+  const [pendingJiraTickets, setPendingJiraTickets] = useState<any[]>([]);
+  const [isProcessingJira, setIsProcessingJira] = useState(false);
 
   const hasResults = !!error || !!response || !!proposedChanges;
   const hasCodeChangePlan = response?.ai_response ? (response.ai_response.includes('PLAN') || response.ai_response.includes('FILES TO CHANGE')) : false;
   const isReviewMode = proposedChanges && proposedChanges.length > 0 && changesApprovalStatus === 'pending';
 
-  const handleSubmit = async (overrideMessage?: string | React.MouseEvent) => {
+  useEffect(() => {
+    // Fetch pending Jira tickets on mount
+    const fetchTickets = async () => {
+      try {
+        const res = await fetch("/api/jira/notifications");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.notifications) {
+            setPendingJiraTickets(data.notifications);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch Jira tickets", err);
+      }
+    };
+    fetchTickets();
+    
+    // Optional: poll every 10s for demo purposes
+    const interval = setInterval(fetchTickets, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUpdateJiraStatus = async (id: string, status: 'processing' | 'processed' | 'dismissed' | 'pending', currentStatus: string) => {
+    try {
+      setIsProcessingJira(true);
+      const res = await fetch(`/api/jira/notifications/${id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, currentStatus })
+      });
+      if (!res.ok) return false;
+      
+      setPendingJiraTickets(prev => {
+        if (status === 'processed' || status === 'dismissed') {
+           return prev.filter(t => t.id !== id);
+        }
+        return prev.map(t => t.id === id ? { ...t, status } : t);
+      });
+      return true;
+    } catch (err) {
+      console.error(`Failed to update Jira ticket ${id}`, err);
+      return false;
+    } finally {
+      setIsProcessingJira(false);
+    }
+  };
+
+  const handleConfirmJira = async (ticket: any) => {
+    const promptText = `Please implement Jira issue ${ticket.issue_key}: ${ticket.summary}\n\nDescription:\n${ticket.description}\n\nURL: ${ticket.url}`;
+    setMessage(promptText);
+    
+    // Atomically claim the ticket so no other tab/click can process it
+    const claimed = await handleUpdateJiraStatus(ticket.id, 'processing', 'pending');
+    if (!claimed) return;
+
+    // Proceed with ChatBot handoff
+    const success = await handleSubmit(promptText);
+    
+    if (success) {
+      await handleUpdateJiraStatus(ticket.id, 'processed', 'processing');
+    } else {
+      // Revert back so it can be retried
+      await handleUpdateJiraStatus(ticket.id, 'pending', 'processing');
+    }
+  };
+
+  const handleDismissJira = async (ticket: any) => {
+    await handleUpdateJiraStatus(ticket.id, 'dismissed', 'pending');
+  };
+
+  const handleSubmit = async (overrideMessage?: string | React.MouseEvent): Promise<boolean> => {
     const textToSubmit = typeof overrideMessage === 'string' ? overrideMessage : message;
-    if (!textToSubmit.trim()) return;
+    if (!textToSubmit.trim()) return false;
 
     setIsLoading(true);
     setError(null);
@@ -50,15 +124,22 @@ export function ChatComposer() {
 
       if (!res.ok) {
         setError(data.error || "An error occurred.");
+        return false;
       } else {
         setResponse({ message: data.message, prompt: data.prompt, ai_response: data.ai_response, context: data.context });
-        if (data.ai_response) {
+        if (data.ai_response && !data.has_ai_error) {
           setApprovalStatus('pending');
         }
         setMessage("");
+
+        if (data.has_ai_error) {
+          return false;
+        }
+        return true;
       }
     } catch (err: any) {
       setError(err.message || "Network error.");
+      return false;
     } finally {
       setIsLoading(false);
       setIsMobileModalOpen(true);
@@ -388,6 +469,38 @@ export function ChatComposer() {
       </div>
 
       <div className="chatBox">
+        {pendingJiraTickets.length > 0 && (
+          <div className="jira-notifications" style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {pendingJiraTickets.map(ticket => (
+              <div key={ticket.id} style={{ padding: '12px', background: '#e0f2fe', borderRadius: '6px', border: '1px solid #bae6fd' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h4 style={{ margin: '0 0 4px 0', color: '#0369a1' }}>New Jira Ticket: {ticket.issue_key}</h4>
+                    <p style={{ margin: '0', fontSize: '14px', color: '#0c4a6e' }}>{ticket.summary}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button 
+                      onClick={() => handleDismissJira(ticket)}
+                      disabled={isProcessingJira || ticket.status === 'processing'}
+                      style={{ padding: '4px 8px', background: 'transparent', border: '1px solid #0284c7', color: '#0284c7', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                    >
+                      Dismiss
+                    </button>
+                    <button 
+                      onClick={() => handleConfirmJira(ticket)}
+                      disabled={isProcessingJira || ticket.status === 'processing'}
+                      style={{ padding: '4px 8px', background: '#0284c7', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}
+                    >
+                      Confirm
+                    </button>
+                  </div>
+                </div>
+                <p style={{ margin: '8px 0 0 0', fontSize: '12px', opacity: 0.8 }}>Do you want CodePilot to process this Jira ticket?</p>
+              </div>
+            ))}
+          </div>
+        )}
+      
         <div className="message bot"><div><b>CodePilot</b><p>Tell me what you want to change. I’ll analyze the repository and create a plan before touching your code.</p></div></div>
         <div className="examplePrompt">Try: <span>Add Google OAuth login and store the Google account ID on the user model.</span></div>
         <div className="composer">

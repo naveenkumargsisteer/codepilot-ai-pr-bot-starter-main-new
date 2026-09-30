@@ -171,6 +171,7 @@ SUMMARY
 A short explanation of what the changes will accomplish.`;
 
     let aiResponse = "";
+    let has_ai_error = false;
     try {
       aiResponse = await generateGeminiResponse(promptContext);
     } catch (aiError: any) {
@@ -186,6 +187,7 @@ A short explanation of what the changes will accomplish.`;
       });
 
       aiResponse = `Error: AI_ERROR_${statusCode}`;
+      has_ai_error = true;
     }
 
     return NextResponse.json({
@@ -200,7 +202,8 @@ A short explanation of what the changes will accomplish.`;
         tree: treeData,
         files: filesContent
       },
-      ai_response: aiResponse
+      ai_response: aiResponse,
+      has_ai_error
     }, { status: 200 });
 
   } catch (error: any) {

@@ -38,3 +38,21 @@ alter table public.pull_requests enable row level security;
 
 -- Add authenticated-user policies after wiring Supabase Auth.
 -- Do NOT expose service-role keys in the browser.
+
+create table if not exists public.jira_notifications (
+  id uuid primary key default gen_random_uuid(),
+  installation_id text not null,
+  repo_full_name text not null,
+  issue_key text not null,
+  summary text not null,
+  description text,
+  url text,
+  status text not null default 'pending', -- pending, processed, dismissed
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(repo_full_name, issue_key)
+);
+
+create index idx_jira_notif_repo on public.jira_notifications(installation_id, repo_full_name, status);
+
+alter table public.jira_notifications enable row level security;
