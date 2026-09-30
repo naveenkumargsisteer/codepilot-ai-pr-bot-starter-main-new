@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DiffViewer } from "./DiffViewer";
+import { updateJiraTicketStatus, generateJiraPrompt } from "../components/JiraHelper";
 
 export function ChatComposer() {
   const [message, setMessage] = useState("");
@@ -49,52 +50,67 @@ export function ChatComposer() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleUpdateJiraStatus = async (id: string, status: 'processing' | 'processed' | 'dismissed' | 'pending', currentStatus: string) => {
-    try {
-      setIsProcessingJira(true);
-      const res = await fetch(`/api/jira/notifications/${id}/status`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, currentStatus })
-      });
-      if (!res.ok) return false;
+  // Check for URL handoff
+  const hasAutoRun = useRef(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !hasAutoRun.current) {
+      const params = new URLSearchParams(window.location.search);
+      const autoPrompt = params.get('auto_prompt');
+      const autoJiraId = params.get('jira_id');
       
-      setPendingJiraTickets(prev => {
-        if (status === 'processed' || status === 'dismissed') {
-           return prev.filter(t => t.id !== id);
-        }
-        return prev.map(t => t.id === id ? { ...t, status } : t);
-      });
-      return true;
-    } catch (err) {
-      console.error(`Failed to update Jira ticket ${id}`, err);
-      return false;
-    } finally {
-      setIsProcessingJira(false);
+      if (autoPrompt && autoJiraId) {
+        hasAutoRun.current = true;
+        setMessage(autoPrompt);
+        
+        // Ensure ticket isn't shown in pending list
+        setPendingJiraTickets(prev => prev.filter(t => t.id !== autoJiraId));
+
+        handleSubmit(autoPrompt).then(async (success) => {
+          if (success) {
+            await updateJiraTicketStatus(autoJiraId, 'processed', 'processing');
+          } else {
+            await updateJiraTicketStatus(autoJiraId, 'pending', 'processing');
+          }
+        });
+        
+        // Clean up URL
+        window.history.replaceState({}, '', '/chat');
+      }
     }
-  };
+  }, []);
 
   const handleConfirmJira = async (ticket: any) => {
-    const promptText = `Please implement Jira issue ${ticket.issue_key}: ${ticket.summary}\n\nDescription:\n${ticket.description}\n\nURL: ${ticket.url}`;
+    const promptText = generateJiraPrompt(ticket);
     setMessage(promptText);
     
-    // Atomically claim the ticket so no other tab/click can process it
-    const claimed = await handleUpdateJiraStatus(ticket.id, 'processing', 'pending');
-    if (!claimed) return;
+    setIsProcessingJira(true);
+    const claimed = await updateJiraTicketStatus(ticket.id, 'processing', 'pending');
+    if (!claimed) {
+      setIsProcessingJira(false);
+      return;
+    }
+    
+    setPendingJiraTickets(prev => prev.filter(t => t.id !== ticket.id));
+    setIsProcessingJira(false);
 
     // Proceed with ChatBot handoff
     const success = await handleSubmit(promptText);
     
     if (success) {
-      await handleUpdateJiraStatus(ticket.id, 'processed', 'processing');
+      await updateJiraTicketStatus(ticket.id, 'processed', 'processing');
     } else {
       // Revert back so it can be retried
-      await handleUpdateJiraStatus(ticket.id, 'pending', 'processing');
+      await updateJiraTicketStatus(ticket.id, 'pending', 'processing');
     }
   };
 
   const handleDismissJira = async (ticket: any) => {
-    await handleUpdateJiraStatus(ticket.id, 'dismissed', 'pending');
+    setIsProcessingJira(true);
+    const ok = await updateJiraTicketStatus(ticket.id, 'dismissed', 'pending');
+    if (ok) {
+      setPendingJiraTickets(prev => prev.filter(t => t.id !== ticket.id));
+    }
+    setIsProcessingJira(false);
   };
 
   const handleSubmit = async (overrideMessage?: string | React.MouseEvent): Promise<boolean> => {

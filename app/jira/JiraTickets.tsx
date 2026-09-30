@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { updateJiraTicketStatus, generateJiraPrompt } from "../components/JiraHelper";
 
 type JiraTicket = {
   id: string;
@@ -16,10 +18,12 @@ type JiraTicket = {
 };
 
 export function JiraTickets() {
+  const router = useRouter();
   const [tickets, setTickets] = useState<JiraTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState("updated_desc");
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -58,6 +62,29 @@ export function JiraTickets() {
       case "dismissed": return "Dismissed";
       default: return status;
     }
+  };
+
+  const handleConfirm = async (ticket: JiraTicket) => {
+    setProcessingId(ticket.id);
+    const claimed = await updateJiraTicketStatus(ticket.id, 'processing', 'pending');
+    
+    if (claimed) {
+      setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: 'processing' } : t));
+      const promptText = generateJiraPrompt(ticket);
+      router.push(`/chat?auto_prompt=${encodeURIComponent(promptText)}&jira_id=${ticket.id}`);
+    } else {
+      setProcessingId(null);
+      fetchTickets();
+    }
+  };
+
+  const handleCancel = async (ticket: JiraTicket) => {
+    setProcessingId(ticket.id);
+    const ok = await updateJiraTicketStatus(ticket.id, 'dismissed', 'pending');
+    if (ok) {
+      setTickets(prev => prev.map(t => t.id === ticket.id ? { ...t, status: 'dismissed' } : t));
+    }
+    setProcessingId(null);
   };
 
   const getStatusBadgeClass = (status: string) => {
@@ -121,11 +148,33 @@ export function JiraTickets() {
                 </div>
                 <h4 style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#334155' }}>{ticket.summary}</h4>
               </div>
-              {ticket.url && (
-                <a href={ticket.url} target="_blank" rel="noreferrer" className="button" style={{ padding: '6px 12px', fontSize: '13px' }}>
-                  View in Jira ↗
-                </a>
-              )}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                {ticket.status === 'pending' && (
+                  <>
+                    <button 
+                      onClick={() => handleConfirm(ticket)} 
+                      disabled={processingId === ticket.id}
+                      className="button primary" 
+                      style={{ padding: '6px 12px', fontSize: '13px' }}
+                    >
+                      {processingId === ticket.id ? "Confirming..." : "Confirm"}
+                    </button>
+                    <button 
+                      onClick={() => handleCancel(ticket)} 
+                      disabled={processingId === ticket.id}
+                      className="button" 
+                      style={{ padding: '6px 12px', fontSize: '13px' }}
+                    >
+                      {processingId === ticket.id ? "Cancelling..." : "Cancel"}
+                    </button>
+                  </>
+                )}
+                {ticket.url && (
+                  <a href={ticket.url} target="_blank" rel="noreferrer" className="button" style={{ padding: '6px 12px', fontSize: '13px' }}>
+                    View in Jira ↗
+                  </a>
+                )}
+              </div>
             </div>
             
             {ticket.description && (
